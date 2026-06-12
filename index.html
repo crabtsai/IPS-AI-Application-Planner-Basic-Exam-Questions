@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI應用規劃師｜模擬考練習</title>
+  <style>
+    :root{
+      --bg:#f6f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280;
+      --main:#2563eb; --ok:#16a34a; --bad:#dc2626; --line:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:920px;margin:0 auto;padding:20px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.06);margin-bottom:16px}
+    h1{font-size:24px;margin:0 0 8px}
+    h2{font-size:18px;margin:0 0 10px}
+    .muted{color:var(--muted);font-size:14px;line-height:1.6}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    input,select{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;background:white}
+    input[type="number"]{width:110px}
+    button{border:0;border-radius:12px;padding:10px 14px;font-size:15px;cursor:pointer;background:var(--main);color:white;font-weight:700}
+    button.secondary{background:#111827}
+    button.ghost{background:#eef2ff;color:#1e40af}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .pill{display:inline-flex;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1e40af;font-size:13px;font-weight:700}
+    .qtitle{font-size:18px;line-height:1.7;font-weight:750;white-space:pre-wrap}
+    .option{display:block;width:100%;text-align:left;background:white;color:var(--text);border:1px solid var(--line);padding:13px 14px;border-radius:14px;margin:10px 0;font-weight:600}
+    .option:hover{border-color:#93c5fd;background:#f8fbff}
+    .option.selected{border-color:var(--main);background:#eff6ff}
+    .option.correct{border-color:var(--ok);background:#ecfdf5;color:#065f46}
+    .option.wrong{border-color:var(--bad);background:#fef2f2;color:#991b1b}
+    .result{font-weight:800;font-size:18px;margin-top:12px}
+    .ok{color:var(--ok)} .bad{color:var(--bad)}
+    .bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px}
+    .bar>div{height:100%;background:var(--main);width:0%}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .stat{padding:12px;border-radius:14px;background:#f9fafb;border:1px solid var(--line);text-align:center}
+    .stat b{display:block;font-size:22px;margin-bottom:4px}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+    th{background:#f9fafb}
+    .small{font-size:13px}
+    @media(max-width:650px){
+      .wrap{padding:12px}
+      .grid{grid-template-columns:repeat(2,1fr)}
+      h1{font-size:21px}
+      .qtitle{font-size:17px}
+      button,input,select{width:100%}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>AI應用規劃師｜模擬考練習</h1>
+    <div class="muted">
+      題庫來源：Google Sheet 發佈版。支援欄位名稱：
+      <b>題目、A、B、C、D、答案、解析</b>。答案可填 A/B/C/D 或完整選項文字。
+    </div>
+  </div>
+
+  <div id="setup" class="card">
+    <h2>考前設定</h2>
+    <div class="row">
+      <label>題數 <input id="countInput" type="number" min="1" value="20"></label>
+      <label>模式
+        <select id="modeInput">
+          <option value="instant">練習模式：每題立即看答案</option>
+          <option value="exam">考試模式：最後才看結果</option>
+        </select>
+      </label>
+      <button id="startBtn">開始模擬考</button>
+      <button class="ghost" id="reloadBtn">重新讀取題庫</button>
+    </div>
+    <p id="loadMsg" class="muted">正在讀取題庫...</p>
+    <p class="muted small">放到 GitHub Pages 後，別人只要打開網址就能練習。</p>
+  </div>
+
+  <div id="quiz" class="card hidden">
+    <div class="row" style="justify-content:space-between">
+      <span class="pill" id="progressText">第 1 / 20 題</span>
+      <span class="pill" id="scoreText">目前答對：0</span>
+    </div>
+    <div class="bar"><div id="progressBar"></div></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <div id="questionText" class="qtitle"></div>
+    <div id="options"></div>
+    <div id="feedback" class="muted"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="submitBtn">確認答案</button>
+      <button class="secondary" id="nextBtn" disabled>下一題</button>
+    </div>
+  </div>
+
+  <div id="finish" class="card hidden">
+    <h2>測驗結果</h2>
+    <div class="grid">
+      <div class="stat"><b id="finalScore">0</b>分數</div>
+      <div class="stat"><b id="finalCorrect">0</b>答對</div>
+      <div class="stat"><b id="finalWrong">0</b>答錯</div>
+      <div class="stat"><b id="finalRate">0%</b>正確率</div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="againBtn">再考一次</button>
+      <button class="ghost" id="reviewBtn">查看錯題</button>
+    </div>
+  </div>
+
+  <div id="review" class="card hidden">
+    <h2>錯題複習</h2>
+    <div id="reviewTable"></div>
+  </div>
+</div>
+
+<script>
+/*
+  你的 Google Sheet 發佈網址：
+  https://docs.google.com/spreadsheets/d/e/2PACX-1vRwLjXqKzT8ZC5LGW7atgol5az6sPZOkUbzF8K0A-i3sgmryc6cDoJFr90PsNId-sUnp4lb7j4OEuXM/pubhtml
+
+  網頁程式實際抓 CSV 版本，較適合 GitHub Pages：
+*/
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwLjXqKzT8ZC5LGW7atgol5az6sPZOkUbzF8K0A-i3sgmryc6cDoJFr90PsNId-sUnp4lb7j4OEuXM/pub?output=csv";
+
+let bank = [];
+let quiz = [];
+let index = 0;
+let selected = null;
+let answers = [];
+let correctCount = 0;
+let mode = "instant";
+
+const $ = id => document.getElementById(id);
+
+function parseCSV(text){
+  const rows = [];
+  let row = [], val = "", inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i], n = text[i+1];
+    if(c === '"' && inQuotes && n === '"'){ val += '"'; i++; }
+    else if(c === '"'){ inQuotes = !inQuotes; }
+    else if(c === "," && !inQuotes){ row.push(val); val = ""; }
+    else if((c === "\n" || c === "\r") && !inQuotes){
+      if(val !== "" || row.length){ row.push(val); rows.push(row); row = []; val = ""; }
+      if(c === "\r" && n === "\n") i++;
+    } else val += c;
+  }
+  if(val !== "" || row.length){ row.push(val); rows.push(row); }
+  return rows;
+}
+
+function normalizeHeader(h){
+  return String(h || "").trim().toLowerCase()
+    .replace(/\s/g,"")
+    .replace("：","")
+    .replace(":","")
+    .replace("選項","")
+    .replace("option","");
+}
+
+function pick(obj, names){
+  for(const n of names){
+    const key = Object.keys(obj).find(k => normalizeHeader(k) === normalizeHeader(n));
+    if(key && obj[key] !== undefined && String(obj[key]).trim() !== "") return String(obj[key]).trim();
+  }
+  return "";
+}
+
+function rowsToQuestions(rows){
+  if(!rows || rows.length < 2) return [];
+  const header = rows[0].map(x => String(x || "").trim());
+  const dataRows = rows.slice(1).filter(r => r.some(x => String(x||"").trim()));
+  return dataRows.map(r => {
+    const obj = {};
+    header.forEach((h,i)=>obj[h]=r[i] || "");
+    const q = pick(obj, ["題目","問題","question","試題"]);
+    const opts = [
+      pick(obj, ["A","甲","選項A","optionA"]),
+      pick(obj, ["B","乙","選項B","optionB"]),
+      pick(obj, ["C","丙","選項C","optionC"]),
+      pick(obj, ["D","丁","選項D","optionD"])
+    ].filter(Boolean);
+    const ans = pick(obj, ["答案","正解","answer","correct"]);
+    const exp = pick(obj, ["解析","說明","explanation"]);
+    return {q, opts, ans, exp};
+  }).filter(x => x.q && x.opts.length >= 2 && x.ans);
+}
+
+function shuffle(arr){
+  return [...arr].sort(()=>Math.random()-0.5);
+}
+
+function answerIndex(item){
+  const a = String(item.ans || "").trim().toUpperCase();
+  const letters = ["A","B","C","D"];
+  if(letters.includes(a)) return letters.indexOf(a);
+
+  // 支援「(A)」、「A.」、「A、」這類答案格式
+  const firstLetter = a.match(/[ABCD]/);
+  if(firstLetter && a.length <= 5) return letters.indexOf(firstLetter[0]);
+
+  const idx = item.opts.findIndex(o => String(o).trim() === String(item.ans).trim());
+  return idx >= 0 ? idx : -1;
+}
+
+async function loadBank(){
+  $("loadMsg").textContent = "正在讀取題庫...";
+  try{
+    const res = await fetch(SHEET_CSV_URL + "&t=" + Date.now(), { cache: "no-store" });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    bank = rowsToQuestions(rows);
+
+    if(!bank.length){
+      console.log(rows.slice(0,5));
+      throw new Error("讀不到題目，請確認試算表第一列欄位包含：題目、A、B、C、D、答案、解析。");
+    }
+
+    $("loadMsg").textContent = `題庫讀取成功：共 ${bank.length} 題。`;
+    $("countInput").max = bank.length;
+    $("countInput").value = Math.min(Number($("countInput").value || 20), bank.length);
+  }catch(e){
+    $("loadMsg").innerHTML =
+      `讀取失敗：${escapeHtml(e.message)}<br>` +
+      `請確認 Google Sheet 已「發佈到網路」，並且欄位名稱為：題目、A、B、C、D、答案、解析。`;
+  }
+}
+
+function startQuiz(){
+  if(!bank.length){ alert("題庫尚未讀取成功"); return; }
+  mode = $("modeInput").value;
+  const count = Math.min(Number($("countInput").value || 20), bank.length);
+  quiz = shuffle(bank).slice(0,count);
+  index = 0; selected = null; answers = []; correctCount = 0;
+  $("setup").classList.add("hidden");
+  $("finish").classList.add("hidden");
+  $("review").classList.add("hidden");
+  $("quiz").classList.remove("hidden");
+  renderQuestion();
+}
+
+function renderQuestion(){
+  selected = null;
+  const item = quiz[index];
+  $("progressText").textContent = `第 ${index+1} / ${quiz.length} 題`;
+  $("scoreText").textContent = `目前答對：${correctCount}`;
+  $("progressBar").style.width = `${((index)/quiz.length)*100}%`;
+  $("questionText").textContent = item.q;
+  $("feedback").innerHTML = "";
+  $("submitBtn").disabled = false;
+  $("nextBtn").disabled = true;
+
+  const letters = ["A","B","C","D"];
+  $("options").innerHTML = "";
+  item.opts.forEach((opt,i)=>{
+    const btn = document.createElement("button");
+    btn.className = "option";
+    btn.textContent = `${letters[i]}. ${opt}`;
+    btn.onclick = () => {
+      selected = i;
+      [...document.querySelectorAll(".option")].forEach(x=>x.classList.remove("selected"));
+      btn.classList.add("selected");
+    };
+    $("options").appendChild(btn);
+  });
+}
+
+function submitAnswer(){
+  if(selected === null){ alert("請先選一個答案"); return; }
+  const item = quiz[index];
+  const correct = answerIndex(item);
+  const isCorrect = selected === correct;
+  answers.push({item, selected, correct, isCorrect});
+  if(isCorrect) correctCount++;
+
+  $("scoreText").textContent = `目前答對：${correctCount}`;
+  $("submitBtn").disabled = true;
+  $("nextBtn").disabled = false;
+
+  if(mode === "instant"){
+    [...document.querySelectorAll(".option")].forEach((btn,i)=>{
+      if(i === correct) btn.classList.add("correct");
+      if(i === selected && !isCorrect) btn.classList.add("wrong");
+    });
+    const letters = ["A","B","C","D"];
+    $("feedback").innerHTML =
+      `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${letters[correct] || item.ans}</div>` +
+      (item.exp ? `<p><b>解析：</b>${escapeHtml(item.exp)}</p>` : "");
+  }
+}
+
+function nextQuestion(){
+  index++;
+  if(index >= quiz.length) finishQuiz();
+  else renderQuestion();
+}
+
+function finishQuiz(){
+  $("quiz").classList.add("hidden");
+  $("finish").classList.remove("hidden");
+  $("progressBar").style.width = `100%`;
+  const total = quiz.length;
+  const score = Math.round((correctCount / total) * 100);
+  $("finalScore").textContent = score;
+  $("finalCorrect").textContent = correctCount;
+  $("finalWrong").textContent = total - correctCount;
+  $("finalRate").textContent = `${score}%`;
+}
+
+function reviewWrong(){
+  const wrong = answers.filter(a => !a.isCorrect);
+  $("review").classList.remove("hidden");
+  if(!wrong.length){
+    $("reviewTable").innerHTML = "<p class='muted'>恭喜，沒有錯題。</p>";
+    return;
+  }
+  const letters = ["A","B","C","D"];
+  $("reviewTable").innerHTML = `<table>
+    <thead><tr><th>題目</th><th>你的答案</th><th>正解</th><th>解析</th></tr></thead>
+    <tbody>${wrong.map(a=>`
+      <tr>
+        <td>${escapeHtml(a.item.q)}</td>
+        <td>${letters[a.selected] || "-"}．${escapeHtml(a.item.opts[a.selected] || "")}</td>
+        <td>${letters[a.correct] || "-"}．${escapeHtml(a.item.opts[a.correct] || a.item.ans || "")}</td>
+        <td>${escapeHtml(a.item.exp || "")}</td>
+      </tr>`).join("")}</tbody></table>`;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+$("startBtn").onclick = startQuiz;
+$("reloadBtn").onclick = loadBank;
+$("submitBtn").onclick = submitAnswer;
+$("nextBtn").onclick = nextQuestion;
+$("againBtn").onclick = () => { $("finish").classList.add("hidden"); $("review").classList.add("hidden"); $("setup").classList.remove("hidden"); };
+$("reviewBtn").onclick = reviewWrong;
+
+loadBank();
+</script>
+</body>
+</html>
