@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AI應用規劃師｜模擬考練習_FB 雲橫介工程師分享</title>
+  <title>AI應用規劃師｜模擬考練習 _ FB 雲橫介工程師 分享</title>
   <style>
     :root{
       --bg:#f6f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280;
@@ -56,8 +56,8 @@
   <div class="card">
     <h1>AI應用規劃師｜模擬考練習</h1>
     <div class="muted">
-      題庫來源：Google Sheet 發佈版。支援欄位名稱：
-      <b>題目、A、B、C、D、答案、解析</b>。答案可填 A/B/C/D 或完整選項文字。
+      題庫來源：Google Sheet。這版改用 <b>JSONP</b> 讀取，避開 GitHub Pages 常見的 Failed to fetch / CORS 問題。
+      支援欄位名稱：<b>題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析</b>。
     </div>
   </div>
 
@@ -115,13 +115,8 @@
 </div>
 
 <script>
-/*
-  你的 Google Sheet 發佈網址：
-  https://docs.google.com/spreadsheets/d/1EEBoG6cWlhsnrkstmQakv2ZNJ7TymplYewcX30E3Khw/edit?usp=sharing
-
-  網頁程式實際抓 CSV 版本，較適合 GitHub Pages：
-*/
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1EEBoG6cWlhsnrkstmQakv2ZNJ7TymplYewcX30E3Khw/edit?usp=sharing";
+const SHEET_ID = "1EEBoG6cWlhsnrkstmQakv2ZNJ7TymplYewcX30E3Khw";
+const GID = "0";
 
 let bank = [];
 let quiz = [];
@@ -132,23 +127,6 @@ let correctCount = 0;
 let mode = "instant";
 
 const $ = id => document.getElementById(id);
-
-function parseCSV(text){
-  const rows = [];
-  let row = [], val = "", inQuotes = false;
-  for(let i=0;i<text.length;i++){
-    const c = text[i], n = text[i+1];
-    if(c === '"' && inQuotes && n === '"'){ val += '"'; i++; }
-    else if(c === '"'){ inQuotes = !inQuotes; }
-    else if(c === "," && !inQuotes){ row.push(val); val = ""; }
-    else if((c === "\n" || c === "\r") && !inQuotes){
-      if(val !== "" || row.length){ row.push(val); rows.push(row); row = []; val = ""; }
-      if(c === "\r" && n === "\n") i++;
-    } else val += c;
-  }
-  if(val !== "" || row.length){ row.push(val); rows.push(row); }
-  return rows;
-}
 
 function normalizeHeader(h){
   return String(h || "").trim().toLowerCase()
@@ -167,23 +145,45 @@ function pick(obj, names){
   return "";
 }
 
+function gvizToRows(json){
+  const cols = json.table.cols.map(c => c.label || c.id || "");
+  const rows = json.table.rows.map(r => {
+    return r.c.map(cell => {
+      if(!cell) return "";
+      return cell.f !== undefined ? cell.f : (cell.v !== undefined ? cell.v : "");
+    });
+  });
+  return [cols, ...rows];
+}
+
 function rowsToQuestions(rows){
   if(!rows || rows.length < 2) return [];
   const header = rows[0].map(x => String(x || "").trim());
   const dataRows = rows.slice(1).filter(r => r.some(x => String(x||"").trim()));
+
   return dataRows.map(r => {
     const obj = {};
     header.forEach((h,i)=>obj[h]=r[i] || "");
+
+    const no = pick(obj, ["題號","編號","no","id"]);
+    const scope = pick(obj, ["範圍","章節","科目","分類","range","scope"]);
+    const type = pick(obj, ["題目類型","類型","題型","type"]);
     const q = pick(obj, ["題目","問題","question","試題"]);
+
+    // 支援你的欄位：選項1～選項4
+    // 也保留舊版 A/B/C/D 格式
     const opts = [
-      pick(obj, ["A","甲","選項A","optionA"]),
-      pick(obj, ["B","乙","選項B","optionB"]),
-      pick(obj, ["C","丙","選項C","optionC"]),
-      pick(obj, ["D","丁","選項D","optionD"])
+      pick(obj, ["選項1","選項一","1","A","甲","選項A","optionA"]),
+      pick(obj, ["選項2","選項二","2","B","乙","選項B","optionB"]),
+      pick(obj, ["選項3","選項三","3","C","丙","選項C","optionC"]),
+      pick(obj, ["選項4","選項四","4","D","丁","選項D","optionD"])
     ].filter(Boolean);
-    const ans = pick(obj, ["答案","正解","answer","correct"]);
+
+    // 支援你的欄位：正確答案
+    const ans = pick(obj, ["正確答案","答案","正解","answer","correct"]);
     const exp = pick(obj, ["解析","說明","explanation"]);
-    return {q, opts, ans, exp};
+
+    return {no, scope, type, q, opts, ans, exp};
   }).filter(x => x.q && x.opts.length >= 2 && x.ans);
 }
 
@@ -192,30 +192,67 @@ function shuffle(arr){
 }
 
 function answerIndex(item){
-  const a = String(item.ans || "").trim().toUpperCase();
+  const raw = String(item.ans || "").trim();
+  const a = raw.toUpperCase();
   const letters = ["A","B","C","D"];
+
+  // A/B/C/D
   if(letters.includes(a)) return letters.indexOf(a);
 
-  // 支援「(A)」、「A.」、「A、」這類答案格式
-  const firstLetter = a.match(/[ABCD]/);
-  if(firstLetter && a.length <= 5) return letters.indexOf(firstLetter[0]);
+  // 1/2/3/4、選項1、選項 1、答案1
+  const numMatch = raw.match(/[1-4]/);
+  if(numMatch && raw.length <= 8) return Number(numMatch[0]) - 1;
 
-  const idx = item.opts.findIndex(o => String(o).trim() === String(item.ans).trim());
+  // (A)、A.、A、答案A
+  const letterMatch = a.match(/[ABCD]/);
+  if(letterMatch && a.length <= 8) return letters.indexOf(letterMatch[0]);
+
+  // 正確答案直接填完整選項文字
+  const idx = item.opts.findIndex(o => String(o).trim() === raw);
   return idx >= 0 ? idx : -1;
+}
+
+function loadGoogleSheetByJSONP(){
+  return new Promise((resolve, reject) => {
+    const callbackName = "googleSheetCallback_" + Date.now();
+    const script = document.createElement("script");
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("讀取逾時。請確認 Google Sheet 權限為「知道連結的任何人可以檢視」。"));
+    }, 15000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[callbackName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[callbackName] = function(json){
+      cleanup();
+      resolve(json);
+    };
+
+    script.onerror = function(){
+      cleanup();
+      reject(new Error("Google Sheet 載入失敗。請確認試算表權限或工作表 gid。"));
+    };
+
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${GID}&tqx=responseHandler:${callbackName}&t=${Date.now()}`;
+    document.body.appendChild(script);
+  });
 }
 
 async function loadBank(){
   $("loadMsg").textContent = "正在讀取題庫...";
   try{
-    const res = await fetch(SHEET_CSV_URL + "&t=" + Date.now(), { cache: "no-store" });
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const text = await res.text();
-    const rows = parseCSV(text);
+    const json = await loadGoogleSheetByJSONP();
+    const rows = gvizToRows(json);
     bank = rowsToQuestions(rows);
 
     if(!bank.length){
       console.log(rows.slice(0,5));
-      throw new Error("讀不到題目，請確認試算表第一列欄位包含：題目、A、B、C、D、答案、解析。");
+      throw new Error("讀不到題目，請確認第一列欄位包含：題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析。");
     }
 
     $("loadMsg").textContent = `題庫讀取成功：共 ${bank.length} 題。`;
@@ -224,7 +261,7 @@ async function loadBank(){
   }catch(e){
     $("loadMsg").innerHTML =
       `讀取失敗：${escapeHtml(e.message)}<br>` +
-      `請確認 Google Sheet 已「發佈到網路」，並且欄位名稱為：題目、A、B、C、D、答案、解析。`;
+      `請確認 Google Sheet 權限為「知道連結的任何人可以檢視」，欄位名稱為：題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析。`;
   }
 }
 
@@ -247,7 +284,12 @@ function renderQuestion(){
   $("progressText").textContent = `第 ${index+1} / ${quiz.length} 題`;
   $("scoreText").textContent = `目前答對：${correctCount}`;
   $("progressBar").style.width = `${((index)/quiz.length)*100}%`;
-  $("questionText").textContent = item.q;
+  const meta = [
+    item.no ? `題號：${item.no}` : "",
+    item.scope ? `範圍：${item.scope}` : "",
+    item.type ? `題型：${item.type}` : ""
+  ].filter(Boolean).join("　");
+  $("questionText").textContent = (meta ? meta + "\n\n" : "") + item.q;
   $("feedback").innerHTML = "";
   $("submitBtn").disabled = false;
   $("nextBtn").disabled = true;
@@ -321,7 +363,12 @@ function reviewWrong(){
     <thead><tr><th>題目</th><th>你的答案</th><th>正解</th><th>解析</th></tr></thead>
     <tbody>${wrong.map(a=>`
       <tr>
-        <td>${escapeHtml(a.item.q)}</td>
+        <td>${escapeHtml([
+          a.item.no ? "題號：" + a.item.no : "",
+          a.item.scope ? "範圍：" + a.item.scope : "",
+          a.item.type ? "題型：" + a.item.type : "",
+          a.item.q
+        ].filter(Boolean).join("\n"))}</td>
         <td>${letters[a.selected] || "-"}．${escapeHtml(a.item.opts[a.selected] || "")}</td>
         <td>${letters[a.correct] || "-"}．${escapeHtml(a.item.opts[a.correct] || a.item.ans || "")}</td>
         <td>${escapeHtml(a.item.exp || "")}</td>
