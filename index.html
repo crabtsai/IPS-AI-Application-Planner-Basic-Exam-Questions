@@ -52,19 +52,71 @@
     .optionList li{padding:7px 9px;border-radius:10px;margin:6px 0;background:#f9fafb;border:1px solid var(--line)}
     .optionList li.correctOpt{background:#ecfdf5;border-color:#86efac;color:#065f46;font-weight:700}
     .optionList li.wrongOpt{background:#fef2f2;border-color:#fca5a5;color:#991b1b;font-weight:700}
+
+    .titleRow{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .themeToggle{white-space:nowrap}
+    html[data-theme="dark"]{
+      --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af;
+      --main:#60a5fa; --ok:#4ade80; --bad:#f87171; --line:#334155;
+    }
+    html[data-theme="dark"] body{background:var(--bg);color:var(--text)}
+    html[data-theme="dark"] .card,
+    html[data-theme="dark"] .wrongCard{
+      background:var(--card);
+      border-color:var(--line);
+      box-shadow:0 8px 22px rgba(0,0,0,.28);
+    }
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] select{
+      background:#0b1220;
+      color:var(--text);
+      border-color:var(--line);
+    }
+    html[data-theme="dark"] button.secondary{background:#374151;color:#f9fafb}
+    html[data-theme="dark"] button.ghost{background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .pill{background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .bar{background:#334155}
+    html[data-theme="dark"] .option{
+      background:#0b1220;
+      color:var(--text);
+      border-color:var(--line);
+    }
+    html[data-theme="dark"] .option:hover{border-color:#60a5fa;background:#172554}
+    html[data-theme="dark"] .option.selected{border-color:#60a5fa;background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .option.correct{border-color:#22c55e;background:#052e16;color:#bbf7d0}
+    html[data-theme="dark"] .option.wrong{border-color:#ef4444;background:#450a0a;color:#fecaca}
+    html[data-theme="dark"] .stat,
+    html[data-theme="dark"] th,
+    html[data-theme="dark"] .summaryBox,
+    html[data-theme="dark"] .optionList li{
+      background:#0b1220;
+      border-color:var(--line);
+    }
+    html[data-theme="dark"] td,
+    html[data-theme="dark"] th{border-bottom-color:var(--line)}
+    html[data-theme="dark"] .passBox{color:#bbf7d0;background:#052e16;border-color:#166534}
+    html[data-theme="dark"] .failBox{color:#fecaca;background:#450a0a;border-color:#991b1b}
+    html[data-theme="dark"] .optionList li.correctOpt{background:#052e16;border-color:#22c55e;color:#bbf7d0}
+    html[data-theme="dark"] .optionList li.wrongOpt{background:#450a0a;border-color:#ef4444;color:#fecaca}
+
     @media(max-width:650px){
       .wrap{padding:12px}
       .grid{grid-template-columns:repeat(2,1fr)}
       h1{font-size:21px}
       .qtitle{font-size:17px}
       button,input,select{width:100%}
+      .titleRow{flex-direction:column}
+      .themeToggle{width:100%}
     }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
-    <h1>AI應用規劃師｜初級｜模擬考練習 _ FB 雲橫介工程師 分享</h1>
+    <div class="titleRow">
+      <h1>AI應用規劃師｜初級｜模擬考練習 _ FB 雲橫介工程師 分享</h1>
+      <button class="ghost themeToggle" id="themeToggleBtn" type="button">🌙 夜間模式</button>
+    </div>
     <div class="muted">
       題庫來源：Google Sheet。題目範圍有包含歷屆考題以及AI生成模擬試題。
       支援欄位名稱：<b>題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析</b>。
@@ -146,6 +198,29 @@ let correctCount = 0;
 let mode = "instant";
 
 const $ = id => document.getElementById(id);
+
+function applyTheme(theme){
+  const safeTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", safeTheme);
+  localStorage.setItem("ai_exam_theme", safeTheme);
+  const btn = $("themeToggleBtn");
+  if(btn){
+    btn.textContent = safeTheme === "dark" ? "☀️ 日間模式" : "🌙 夜間模式";
+    btn.setAttribute("aria-label", safeTheme === "dark" ? "切換為日間模式" : "切換為夜間模式");
+  }
+}
+
+function initTheme(){
+  const saved = localStorage.getItem("ai_exam_theme");
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(saved || (prefersDark ? "dark" : "light"));
+}
+
+function toggleTheme(){
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  applyTheme(current === "dark" ? "light" : "dark");
+}
+
 
 function normalizeHeader(h){
   return String(h || "").trim().toLowerCase()
@@ -484,7 +559,9 @@ $("nextBtn").onclick = nextQuestion;
 $("againBtn").onclick = () => { $("finish").classList.add("hidden"); $("review").classList.add("hidden"); $("setup").classList.remove("hidden"); };
 $("reviewBtn").onclick = reviewWrong;
 $("practiceWrongBtn").onclick = practiceWrong;
+$("themeToggleBtn").onclick = toggleTheme;
 
+initTheme();
 loadBank();
 </script>
 </body>
