@@ -42,6 +42,16 @@
     th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
     th{background:#f9fafb}
     .small{font-size:13px}
+    .summaryBox{margin-top:14px;padding:12px;border-radius:14px;background:#f9fafb;border:1px solid var(--line);line-height:1.7}
+    .passBox{color:#065f46;background:#ecfdf5;border:1px solid #bbf7d0}
+    .failBox{color:#991b1b;background:#fef2f2;border:1px solid #fecaca}
+    .wrongCard{border:1px solid var(--line);border-radius:16px;background:#fff;padding:14px;margin:12px 0}
+    .wrongCard h3{font-size:16px;margin:0 0 8px;line-height:1.6}
+    .answerLine{margin:8px 0;line-height:1.7}
+    .optionList{margin-top:8px;padding-left:0;list-style:none}
+    .optionList li{padding:7px 9px;border-radius:10px;margin:6px 0;background:#f9fafb;border:1px solid var(--line)}
+    .optionList li.correctOpt{background:#ecfdf5;border-color:#86efac;color:#065f46;font-weight:700}
+    .optionList li.wrongOpt{background:#fef2f2;border-color:#fca5a5;color:#991b1b;font-weight:700}
     @media(max-width:650px){
       .wrap{padding:12px}
       .grid{grid-template-columns:repeat(2,1fr)}
@@ -96,20 +106,27 @@
 
   <div id="finish" class="card hidden">
     <h2>測驗結果</h2>
+    <div id="finalStatus" class="summaryBox"></div>
+    <p id="finalSummary" class="muted"></p>
     <div class="grid">
-      <div class="stat"><b id="finalScore">0</b>分數</div>
+      <div class="stat"><b id="finalScore">0</b>得分</div>
+      <div class="stat"><b id="finalTotal">100</b>總分</div>
       <div class="stat"><b id="finalCorrect">0</b>答對</div>
       <div class="stat"><b id="finalWrong">0</b>答錯</div>
       <div class="stat"><b id="finalRate">0%</b>正確率</div>
+      <div class="stat"><b id="finalPoint">0</b>每題分數</div>
     </div>
+    <div id="weakPoint" class="summaryBox"></div>
     <div class="row" style="margin-top:14px">
       <button id="againBtn">再考一次</button>
-      <button class="ghost" id="reviewBtn">查看錯題</button>
+      <button class="ghost" id="reviewBtn">查看錯題解析</button>
+      <button class="secondary" id="practiceWrongBtn">只練錯題</button>
     </div>
   </div>
 
   <div id="review" class="card hidden">
-    <h2>錯題複習</h2>
+    <h2>錯題複習與預習</h2>
+    <p class="muted small">這裡會列出你答錯的題目、你的答案、正確答案與解析。考完可以先看這區，下一輪再按「只練錯題」。</p>
     <div id="reviewTable"></div>
   </div>
 </div>
@@ -117,6 +134,8 @@
 <script>
 const SHEET_ID = "1EEBoG6cWlhsnrkstmQakv2ZNJ7TymplYewcX30E3Khw";
 const GID = "0";
+const TOTAL_SCORE = 100;      // 總分，可自行改成 100 或其他分制
+const PASS_SCORE = 70;        // 通過門檻，可依你的考試規則調整
 
 let bank = [];
 let quiz = [];
@@ -265,11 +284,20 @@ async function loadBank(){
   }
 }
 
-function startQuiz(){
+function startQuiz(sourceQuestions = null){
   if(!bank.length){ alert("題庫尚未讀取成功"); return; }
-  mode = $("modeInput").value;
-  const count = Math.min(Number($("countInput").value || 20), bank.length);
-  quiz = shuffle(bank).slice(0,count);
+
+  // 一般模擬考：從完整題庫抽題
+  // 錯題重練：只從錯題清單抽題，並自動切成練習模式，方便立即看解析
+  if(Array.isArray(sourceQuestions) && sourceQuestions.length){
+    quiz = shuffle(sourceQuestions);
+    mode = "instant";
+  }else{
+    mode = $("modeInput").value;
+    const count = Math.min(Number($("countInput").value || 20), bank.length);
+    quiz = shuffle(bank).slice(0,count);
+  }
+
   index = 0; selected = null; answers = []; correctCount = 0;
   $("setup").classList.add("hidden");
   $("finish").classList.add("hidden");
@@ -328,7 +356,7 @@ function submitAnswer(){
     });
     const letters = ["A","B","C","D"];
     $("feedback").innerHTML =
-      `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${letters[correct] || item.ans}</div>` +
+      `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${correct >= 0 ? letters[correct] : escapeHtml(item.ans)}</div>` +
       (item.exp ? `<p><b>解析：</b>${escapeHtml(item.exp)}</p>` : "");
   }
 }
@@ -343,12 +371,65 @@ function finishQuiz(){
   $("quiz").classList.add("hidden");
   $("finish").classList.remove("hidden");
   $("progressBar").style.width = `100%`;
-  const total = quiz.length;
-  const score = Math.round((correctCount / total) * 100);
+
+  const total = quiz.length || 1;
+  const wrongCount = total - correctCount;
+  const rawScore = (correctCount / total) * TOTAL_SCORE;
+  const score = Math.round(rawScore * 10) / 10;
+  const rate = Math.round((correctCount / total) * 100);
+  const pointPerQuestion = Math.round((TOTAL_SCORE / total) * 10) / 10;
+  const passed = score >= PASS_SCORE;
+
   $("finalScore").textContent = score;
+  $("finalTotal").textContent = TOTAL_SCORE;
   $("finalCorrect").textContent = correctCount;
-  $("finalWrong").textContent = total - correctCount;
-  $("finalRate").textContent = `${score}%`;
+  $("finalWrong").textContent = wrongCount;
+  $("finalRate").textContent = `${rate}%`;
+  $("finalPoint").textContent = pointPerQuestion;
+
+  $("finalStatus").className = `summaryBox ${passed ? "passBox" : "failBox"}`;
+  $("finalStatus").innerHTML = passed
+    ? `<b>結果：通過門檻</b>，本次 ${score} / ${TOTAL_SCORE} 分。`
+    : `<b>結果：未達門檻</b>，本次 ${score} / ${TOTAL_SCORE} 分，建議先複習錯題再重考。`;
+
+  $("finalSummary").innerHTML =
+    `本次共 ${total} 題，每題約 ${pointPerQuestion} 分；答對 ${correctCount} 題、答錯 ${wrongCount} 題。` +
+    `設定通過門檻為 ${PASS_SCORE} 分，可在程式中的 <b>PASS_SCORE</b> 自行調整。`;
+
+  renderWeakPoint();
+  $("practiceWrongBtn").disabled = wrongCount === 0;
+
+  // 考完後自動展開錯題預習，讓使用者不用再自己找
+  reviewWrong();
+}
+
+function renderWeakPoint(){
+  const wrong = answers.filter(a => !a.isCorrect);
+  if(!wrong.length){
+    $("weakPoint").innerHTML = "<b>弱點分析：</b>這次沒有錯題，狀態很好。可以加大題數或切換考試模式挑戰。";
+    return;
+  }
+
+  const countMap = {};
+  wrong.forEach(a => {
+    const key = a.item.scope || a.item.type || "未分類";
+    countMap[key] = (countMap[key] || 0) + 1;
+  });
+
+  const ranking = Object.entries(countMap)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([name,count])=>`${escapeHtml(name)}：${count} 題`)
+    .join("、");
+
+  $("weakPoint").innerHTML = `<b>弱點分析：</b>${ranking}<br><span class="muted small">建議先看下方錯題解析，再按「只練錯題」重跑一輪。</span>`;
+}
+
+function optionListHtml(a){
+  const letters = ["A","B","C","D"];
+  return `<ul class="optionList">${a.item.opts.map((opt,i)=>{
+    const cls = i === a.correct ? "correctOpt" : (i === a.selected ? "wrongOpt" : "");
+    return `<li class="${cls}">${letters[i] || "-"}. ${escapeHtml(opt)}</li>`;
+  }).join("")}</ul>`;
 }
 
 function reviewWrong(){
@@ -358,21 +439,38 @@ function reviewWrong(){
     $("reviewTable").innerHTML = "<p class='muted'>恭喜，沒有錯題。</p>";
     return;
   }
+
   const letters = ["A","B","C","D"];
-  $("reviewTable").innerHTML = `<table>
-    <thead><tr><th>題目</th><th>你的答案</th><th>正解</th><th>解析</th></tr></thead>
-    <tbody>${wrong.map(a=>`
-      <tr>
-        <td>${escapeHtml([
-          a.item.no ? "題號：" + a.item.no : "",
-          a.item.scope ? "範圍：" + a.item.scope : "",
-          a.item.type ? "題型：" + a.item.type : "",
-          a.item.q
-        ].filter(Boolean).join("\n"))}</td>
-        <td>${letters[a.selected] || "-"}．${escapeHtml(a.item.opts[a.selected] || "")}</td>
-        <td>${letters[a.correct] || "-"}．${escapeHtml(a.item.opts[a.correct] || a.item.ans || "")}</td>
-        <td>${escapeHtml(a.item.exp || "")}</td>
-      </tr>`).join("")}</tbody></table>`;
+  $("reviewTable").innerHTML = wrong.map((a,i)=>{
+    const meta = [
+      a.item.no ? "題號：" + a.item.no : "",
+      a.item.scope ? "範圍：" + a.item.scope : "",
+      a.item.type ? "題型：" + a.item.type : ""
+    ].filter(Boolean).join("　");
+
+    const yourAnswer = `${letters[a.selected] || "-"}．${escapeHtml(a.item.opts[a.selected] || "")}`;
+    const correctAnswer = a.correct >= 0
+      ? `${letters[a.correct] || "-"}．${escapeHtml(a.item.opts[a.correct] || "")}`
+      : escapeHtml(a.item.ans || "正確答案格式無法判讀");
+
+    return `<div class="wrongCard">
+      <h3>錯題 ${i+1}：${escapeHtml(a.item.q)}</h3>
+      ${meta ? `<div class="muted small">${escapeHtml(meta)}</div>` : ""}
+      ${optionListHtml(a)}
+      <div class="answerLine bad"><b>你的答案：</b>${yourAnswer}</div>
+      <div class="answerLine ok"><b>正確答案：</b>${correctAnswer}</div>
+      <div class="answerLine"><b>解析：</b>${escapeHtml(a.item.exp || "這題目前沒有解析，建議回題庫補上解析欄位。")}</div>
+    </div>`;
+  }).join("");
+}
+
+function practiceWrong(){
+  const wrongItems = answers.filter(a => !a.isCorrect).map(a => a.item);
+  if(!wrongItems.length){
+    alert("這次沒有錯題可以練習");
+    return;
+  }
+  startQuiz(wrongItems);
 }
 
 function escapeHtml(s){
@@ -385,6 +483,7 @@ $("submitBtn").onclick = submitAnswer;
 $("nextBtn").onclick = nextQuestion;
 $("againBtn").onclick = () => { $("finish").classList.add("hidden"); $("review").classList.add("hidden"); $("setup").classList.remove("hidden"); };
 $("reviewBtn").onclick = reviewWrong;
+$("practiceWrongBtn").onclick = practiceWrong;
 
 loadBank();
 </script>
