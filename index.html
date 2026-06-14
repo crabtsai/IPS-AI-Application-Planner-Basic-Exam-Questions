@@ -52,6 +52,15 @@
     .optionList li{padding:7px 9px;border-radius:10px;margin:6px 0;background:#f9fafb;border:1px solid var(--line)}
     .optionList li.correctOpt{background:#ecfdf5;border-color:#86efac;color:#065f46;font-weight:700}
     .optionList li.wrongOpt{background:#fef2f2;border-color:#fca5a5;color:#991b1b;font-weight:700}
+    .scopeFilter{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:16px;background:#f9fafb}
+    .scopeHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+    .scopeActions{display:flex;gap:8px;flex-wrap:wrap}
+    .scopeActions button{padding:8px 10px;font-size:13px}
+    .scopeGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .scopeItem{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:white;line-height:1.4;font-size:14px;cursor:pointer}
+    .scopeItem input{width:auto;margin:0;padding:0;flex:0 0 auto}
+    .scopeItem span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .scopeCount{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap;flex:0 0 auto}
 
     .titleRow{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .themeToggle{white-space:nowrap}
@@ -98,6 +107,8 @@
     html[data-theme="dark"] .failBox{color:#fecaca;background:#450a0a;border-color:#991b1b}
     html[data-theme="dark"] .optionList li.correctOpt{background:#052e16;border-color:#22c55e;color:#bbf7d0}
     html[data-theme="dark"] .optionList li.wrongOpt{background:#450a0a;border-color:#ef4444;color:#fecaca}
+    html[data-theme="dark"] .scopeFilter{background:#0b1220;border-color:var(--line)}
+    html[data-theme="dark"] .scopeItem{background:#111827;border-color:var(--line)}
 
     @media(max-width:650px){
       .wrap{padding:12px}
@@ -107,6 +118,11 @@
       button,input,select{width:100%}
       .titleRow{flex-direction:column}
       .themeToggle{width:100%}
+      .scopeHeader{flex-direction:column}
+      .scopeActions{width:100%}
+      .scopeActions button{width:calc(50% - 4px)}
+      .scopeGrid{grid-template-columns:1fr}
+      .scopeItem input{width:auto}
     }
   </style>
 </head>
@@ -136,6 +152,21 @@
       <button id="startBtn">開始模擬考</button>
       <button class="ghost" id="reloadBtn">重新讀取題庫</button>
     </div>
+
+    <div id="scopeFilterBox" class="scopeFilter hidden">
+      <div class="scopeHeader">
+        <div>
+          <b>選擇練習範圍</b>
+          <div id="scopeSummary" class="muted small">預設全選，可取消不想練的範圍。</div>
+        </div>
+        <div class="scopeActions">
+          <button class="ghost" id="selectAllScopesBtn" type="button">全選</button>
+          <button class="ghost" id="clearScopesBtn" type="button">清除</button>
+        </div>
+      </div>
+      <div id="scopeList" class="scopeGrid"></div>
+    </div>
+
     <p id="loadMsg" class="muted">正在讀取題庫...</p>
     <p class="muted small">放到 GitHub Pages 後，別人只要打開網址就能練習。</p>
   </div>
@@ -196,6 +227,8 @@ let selected = null;
 let answers = [];
 let correctCount = 0;
 let mode = "instant";
+let scopeMeta = [];
+let selectedScopes = new Set();
 
 const $ = id => document.getElementById(id);
 
@@ -285,6 +318,102 @@ function shuffle(arr){
   return [...arr].sort(()=>Math.random()-0.5);
 }
 
+function scopeName(item){
+  const name = String(item.scope || "未分類").trim();
+  return name || "未分類";
+}
+
+function buildScopeMeta(){
+  const counts = {};
+  bank.forEach(item => {
+    const name = scopeName(item);
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  return Object.entries(counts)
+    .map(([name, count]) => ({name, count}))
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+}
+
+function getSelectedQuestions(){
+  if(!bank.length || !selectedScopes.size) return [];
+  return bank.filter(item => selectedScopes.has(scopeName(item)));
+}
+
+function updateScopeSummary(){
+  const summary = $("scopeSummary");
+  if(!summary) return;
+  const selectedQuestionCount = getSelectedQuestions().length;
+  const selectedScopeCount = selectedScopes.size;
+  const totalScopeCount = scopeMeta.length;
+
+  if(!selectedScopeCount){
+    summary.textContent = `尚未選擇範圍，請至少勾選一個範圍。`;
+  }else{
+    summary.textContent = `已選 ${selectedScopeCount} / ${totalScopeCount} 個範圍，共 ${selectedQuestionCount} 題。預設全選，可取消不想練的範圍。`;
+  }
+}
+
+function syncCountInputByScope(){
+  const pool = getSelectedQuestions();
+  const countInput = $("countInput");
+  const startBtn = $("startBtn");
+  const maxCount = pool.length;
+
+  if(!countInput || !startBtn) return;
+
+  if(maxCount <= 0){
+    countInput.max = 0;
+    countInput.value = 0;
+    startBtn.disabled = true;
+    updateScopeSummary();
+    return;
+  }
+
+  const current = Number(countInput.value || 20);
+  countInput.max = maxCount;
+  countInput.value = Math.min(Math.max(current, 1), maxCount);
+  startBtn.disabled = false;
+  updateScopeSummary();
+}
+
+function updateScopeSelection(){
+  selectedScopes = new Set([...document.querySelectorAll(".scopeCheckbox:checked")].map(cb => cb.value));
+  syncCountInputByScope();
+}
+
+function setAllScopes(checked){
+  document.querySelectorAll(".scopeCheckbox").forEach(cb => cb.checked = checked);
+  updateScopeSelection();
+}
+
+function renderScopeFilter(){
+  const box = $("scopeFilterBox");
+  const list = $("scopeList");
+  if(!box || !list) return;
+
+  scopeMeta = buildScopeMeta();
+  selectedScopes = new Set(scopeMeta.map(s => s.name)); // 預設全選
+
+  if(!scopeMeta.length){
+    box.classList.add("hidden");
+    list.innerHTML = "";
+    syncCountInputByScope();
+    return;
+  }
+
+  list.innerHTML = scopeMeta.map(s => `
+    <label class="scopeItem" title="${escapeHtml(s.name)}">
+      <input type="checkbox" class="scopeCheckbox" value="${escapeHtml(s.name)}" checked>
+      <span>${escapeHtml(s.name)}</span>
+      <span class="scopeCount">${s.count} 題</span>
+    </label>
+  `).join("");
+
+  box.classList.remove("hidden");
+  document.querySelectorAll(".scopeCheckbox").forEach(cb => cb.onchange = updateScopeSelection);
+  syncCountInputByScope();
+}
+
 function answerIndex(item){
   const raw = String(item.ans || "").trim();
   const a = raw.toUpperCase();
@@ -349,9 +478,8 @@ async function loadBank(){
       throw new Error("讀不到題目，請確認第一列欄位包含：題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析。");
     }
 
-    $("loadMsg").textContent = `題庫讀取成功：共 ${bank.length} 題。`;
-    $("countInput").max = bank.length;
-    $("countInput").value = Math.min(Number($("countInput").value || 20), bank.length);
+    renderScopeFilter();
+    $("loadMsg").textContent = `題庫讀取成功：共 ${bank.length} 題，已預設全選 ${scopeMeta.length} 個範圍。`;
   }catch(e){
     $("loadMsg").innerHTML =
       `讀取失敗：${escapeHtml(e.message)}<br>` +
@@ -369,8 +497,13 @@ function startQuiz(sourceQuestions = null){
     mode = "instant";
   }else{
     mode = $("modeInput").value;
-    const count = Math.min(Number($("countInput").value || 20), bank.length);
-    quiz = shuffle(bank).slice(0,count);
+    const pool = getSelectedQuestions();
+    if(!pool.length){
+      alert("請至少勾選一個要練習的範圍");
+      return;
+    }
+    const count = Math.min(Number($("countInput").value || 20), pool.length);
+    quiz = shuffle(pool).slice(0,count);
   }
 
   index = 0; selected = null; answers = []; correctCount = 0;
@@ -560,6 +693,9 @@ $("againBtn").onclick = () => { $("finish").classList.add("hidden"); $("review")
 $("reviewBtn").onclick = reviewWrong;
 $("practiceWrongBtn").onclick = practiceWrong;
 $("themeToggleBtn").onclick = toggleTheme;
+$("selectAllScopesBtn").onclick = () => setAllScopes(true);
+$("clearScopesBtn").onclick = () => setAllScopes(false);
+$("countInput").oninput = syncCountInputByScope;
 
 initTheme();
 loadBank();
