@@ -1,12 +1,11 @@
 // Firebase Web 前端組態檔
-// 目前 index.html 尚未載入 Firebase SDK，也尚未呼叫 initializeApp。
-// 後續若加入 Firebase 功能，可把 Firebase Console 提供的 Web App 組態貼到下方。
-// 注意：絕對不要把 service account JSON、私鑰、管理員憑證或真正的伺服器密鑰放進 GitHub Pages。
+// 此為 Firebase Web App 公開組態；請勿在此放入 Service Account、私鑰或伺服器密鑰。
 window.FIREBASE_CONFIG = Object.freeze({
-  apiKey: "請填入 Firebase Web API Key",
-  authDomain: "請填入.firebaseapp.com",
-  projectId: "請填入 projectId",
-  storageBucket: "請填入 storageBucket",
-  messagingSenderId: "請填入 messagingSenderId",
-  appId: "請填入 appId"
+  apiKey: "AIzaSyChsmSHNElQYVUNSiblN6LiYKbScP5EpkY",
+  authDomain: "ips-ai-application-basic-exam.firebaseapp.com",
+  projectId: "ips-ai-application-basic-exam",
+  storageBucket: "ips-ai-application-basic-exam.firebasestorage.app",
+  messagingSenderId: "1096961993447",
+  appId: "1:1096961993447:web:9d4633a21476f192f31042",
+  measurementId: "G-JW9645CDJP"
 });
