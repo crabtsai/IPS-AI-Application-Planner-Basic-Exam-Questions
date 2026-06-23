@@ -20,7 +20,7 @@
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     input,select{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;background:white;color:var(--text)}
     input[type="number"]{width:110px}
-    #countInput{width:130px}
+    #countInput{width:130px;cursor:pointer;appearance:auto;-webkit-appearance:menulist}
     button{border:0;border-radius:12px;padding:10px 14px;font-size:15px;cursor:pointer;background:var(--main);color:white;font-weight:700}
     button.secondary{background:#111827}
     button.ghost{background:#eef2ff;color:#1e40af}
@@ -270,7 +270,18 @@
     </div>
     <div class="row">
       <label>題數
-        <select id="countInput" aria-label="選擇題數"></select>
+        <select id="countInput" aria-label="選擇題數">
+          <option value="10">10 題</option>
+          <option value="20" selected>20 題</option>
+          <option value="30">30 題</option>
+          <option value="40">40 題</option>
+          <option value="50">50 題</option>
+          <option value="60">60 題</option>
+          <option value="70">70 題</option>
+          <option value="80">80 題</option>
+          <option value="90">90 題</option>
+          <option value="100">100 題</option>
+        </select>
       </label>
       <label>模式
         <select id="modeInput">
@@ -365,12 +376,18 @@ const GID = String(APP_CONFIG.googleSheet?.gid ?? "0");
 const TOTAL_SCORE = Number(APP_CONFIG.exam?.totalScore ?? 100);
 const PASS_SCORE = Number(APP_CONFIG.exam?.passScore ?? 70);
 const DEFAULT_QUESTION_COUNT = Number(APP_CONFIG.exam?.defaultQuestionCount ?? 20);
-const QUESTION_COUNT_OPTIONS = Array.isArray(APP_CONFIG.exam?.questionCountOptions)
+const DEFAULT_QUESTION_COUNT_OPTIONS = Object.freeze([10,20,30,40,50,60,70,80,90,100]);
+const CONFIGURED_QUESTION_COUNT_OPTIONS = Array.isArray(APP_CONFIG.exam?.questionCountOptions)
   ? [...new Set(APP_CONFIG.exam.questionCountOptions
       .map(Number)
-      .filter(n => Number.isInteger(n) && n > 0))]
+      .filter(n => Number.isInteger(n) && n >= 10 && n <= 100 && n % 10 === 0))]
       .sort((a, b) => a - b)
-  : [10,20,30,40,50,60,70,80,90,100];
+  : [];
+
+// config.js 若未載入、陣列為空或格式錯誤，仍保證顯示 10～100 題。
+const QUESTION_COUNT_OPTIONS = CONFIGURED_QUESTION_COUNT_OPTIONS.length
+  ? CONFIGURED_QUESTION_COUNT_OPTIONS
+  : [...DEFAULT_QUESTION_COUNT_OPTIONS];
 
 let bank = [];
 let quiz = [];
@@ -912,15 +929,20 @@ function renderQuestionCountOptions(maxCount = Infinity){
   const countInput = $("countInput");
   if(!countInput) return;
 
-  // 純前端更新下拉選單，不查詢 Firestore，因此切換範圍不會增加讀取數。
+  // 純前端更新下拉選單，不查詢 Firestore，因此切換題數或範圍不會增加讀取數。
   const current = Number(countInput.value || DEFAULT_QUESTION_COUNT);
-  const available = QUESTION_COUNT_OPTIONS.filter(count => count <= maxCount);
-  const options = QUESTION_COUNT_OPTIONS.map(count =>
-    `<option value="${count}" ${count > maxCount ? "disabled" : ""}>${count} 題</option>`
-  );
+  const safeOptions = QUESTION_COUNT_OPTIONS.length
+    ? QUESTION_COUNT_OPTIONS
+    : [...DEFAULT_QUESTION_COUNT_OPTIONS];
+  const available = safeOptions.filter(count => count <= maxCount);
 
-  // 若所選範圍不足 10 題，仍提供「全部可用」選項，避免無法開始。
-  if(maxCount > 0 && available.length === 0){
+  const options = safeOptions.map(count => {
+    const disabled = count > maxCount ? " disabled" : "";
+    return `<option value="${count}"${disabled}>${count} 題</option>`;
+  });
+
+  // 若所選範圍不足 10 題，仍提供全部可用題數，避免選單沒有可選項目。
+  if(Number.isFinite(maxCount) && maxCount > 0 && available.length === 0){
     options.unshift(`<option value="${maxCount}">全部可用（${maxCount} 題）</option>`);
   }
 
@@ -933,8 +955,10 @@ function renderQuestionCountOptions(maxCount = Infinity){
     nextValue = DEFAULT_QUESTION_COUNT;
   }else if(available.length){
     nextValue = available[available.length - 1];
-  }else if(maxCount > 0){
+  }else if(Number.isFinite(maxCount) && maxCount > 0){
     nextValue = maxCount;
+  }else{
+    nextValue = safeOptions.includes(20) ? 20 : safeOptions[0];
   }
 
   countInput.value = String(nextValue);
